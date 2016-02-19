@@ -26,7 +26,7 @@ from jinja2._compat import with_metaclass, string_types, iteritems
 # the only real useful gettext functions for a Jinja template.  Note
 # that ugettext must be assigned to gettext as Jinja doesn't support
 # non unicode strings.
-GETTEXT_FUNCTIONS = ('_', 'gettext', 'ngettext')
+GETTEXT_FUNCTIONS = ('_', 'gettext', 'ngettext', 'pgettext', 'npgettext')
 
 
 class ExtensionRegistry(type):
@@ -153,6 +153,27 @@ def _make_new_ngettext(func):
     return ngettext
 
 
+def _make_new_pgettext(func):
+    @contextfunction
+    def pgettext(__context, __ctx, __string, **variables):
+        rv = __context.call(func, __ctx, __string)
+        if __context.eval_ctx.autoescape:
+            rv = Markup(rv)
+        return rv % variables
+    return pgettext
+
+
+def _make_new_npgettext(func):
+    @contextfunction
+    def npgettext(__context, __ctx, __singular, __plural, __num, **variables):
+        variables.setdefault('num', __num)
+        rv = __context.call(func, __ctx, __singular, __plural, __num)
+        if __context.eval_ctx.autoescape:
+            rv = Markup(rv)
+        return rv % variables
+    return npgettext
+
+
 class InternationalizationExtension(Extension):
     """This extension adds gettext support to Jinja2."""
     tags = set(['trans'])
@@ -183,7 +204,14 @@ class InternationalizationExtension(Extension):
         ngettext = getattr(translations, 'ungettext', None)
         if ngettext is None:
             ngettext = translations.ngettext
-        self._install_callables(gettext, ngettext, newstyle)
+        pgettext = getattr(translations, 'upgettext', None)
+        if pgettext is None:
+            pgettext = translations.pgettext
+        npgettext = getattr(translations, 'unpgettext', None)
+        if npgettext is None:
+            npgettext = translations.npgettext
+        self._install_callables(
+            gettext, ngettext, pgettext, npgettext, newstyle)
 
     def _install_null(self, newstyle=None):
         self._install_callables(
@@ -192,15 +220,20 @@ class InternationalizationExtension(Extension):
             newstyle
         )
 
-    def _install_callables(self, gettext, ngettext, newstyle=None):
+    def _install_callables(self, gettext, ngettext, pgettext, npgettext,
+                           newstyle=None):
         if newstyle is not None:
             self.environment.newstyle_gettext = newstyle
         if self.environment.newstyle_gettext:
             gettext = _make_new_gettext(gettext)
             ngettext = _make_new_ngettext(ngettext)
+            pgettext = _make_new_pgettext(pgettext)
+            npgettext = _make_new_npgettext(npgettext)
         self.environment.globals.update(
             gettext=gettext,
-            ngettext=ngettext
+            ngettext=ngettext,
+            pgettext=pgettext,
+            npgettext=npgettext
         )
 
     def _uninstall(self, translations):
